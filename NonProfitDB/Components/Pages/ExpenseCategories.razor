@@ -1,0 +1,264 @@
+﻿@page "/expensecategories"
+@using NonProfitDB.Models
+@using Microsoft.EntityFrameworkCore
+@inject NonProfitDBContext _dbContext
+@inject Radzen.NotificationService NotificationService
+@rendermode InteractiveServer
+
+<h3>Expense Categories</h3>
+
+<style>
+    .rz-grid-table {
+        width: 100%;
+        table-layout: auto;
+    }
+</style>
+
+<RadzenDataGrid @ref="_categoryGrid"
+                AllowFiltering="true"
+                AllowPaging="true"
+                PageSize="10"
+                AllowSorting="true"
+                EditMode="DataGridEditMode.Single"
+                Data="@_categories"
+                TItem="ExpenseCategory"
+                RowUpdate="@OnUpdateRow"
+                RowCreate="@OnCreateRow"
+                ColumnWidth="200px"
+                Style="width:100%">
+
+    <!-- ***Top Header Button (Add New)*** -->
+    <HeaderTemplate>
+        <RadzenButton ButtonStyle="ButtonStyle.Success"
+                      Icon="add_circle"
+                      Text="Add New Category"
+                      Click="@InsertRow"
+                      Disabled="@(CategoriesToInsert.Count > 0)" />
+    </HeaderTemplate>
+
+    <!-- ***Grid Columns*** -->
+    <Columns>
+        <!-- ***Column: Category Name*** -->
+        <RadzenDataGridColumn TItem="ExpenseCategory"
+                              Property="CategoryName"
+                              Title="Category Name"
+                              Width="320px">
+            <Template Context="category">@category.CategoryName</Template>
+            <EditTemplate Context="category">
+                <RadzenTextBox @bind-Value="category.CategoryName"
+                               Name="CategoryName"
+                               Style="width:300px; display:block" />
+                <RadzenRequiredValidator Component="CategoryName"
+                                         Text="Category Name is required"
+                                         Popup="true" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+
+        <!-- ***Column: Description*** -->
+        <RadzenDataGridColumn TItem="ExpenseCategory"
+                              Property="Description"
+                              Title="Description"
+                              Width="420px">
+            <Template Context="category">@category.Description</Template>
+            <EditTemplate Context="category">
+                <RadzenTextBox @bind-Value="category.Description"
+                               Name="Description"
+                               Style="width:380px; display:block" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+
+        <!-- ***Column: Actions (Edit / Delete)*** -->
+        <RadzenDataGridColumn TItem="ExpenseCategory"
+                              Filterable="false"
+                              Sortable="false"
+                              TextAlign="TextAlign.Right"
+                              Width="140px">
+            <Template Context="category">
+                <RadzenButton Icon="edit" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                              Click="@(() => EditRow(category))" @onclick:stopPropagation="true" />
+                <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small"
+                              class="rz-ms-1" Click="@(async () => await DeleteRow(category))" @onclick:stopPropagation="true" />
+            </Template>
+
+            <EditTemplate Context="category">
+                <RadzenButton Icon="check" ButtonStyle="ButtonStyle.Success" Size="ButtonSize.Small"
+                              Click="@(() => SaveRow(category))" />
+                <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                              class="rz-ms-1" Click="@(() => CancelEdit(category))" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+    </Columns>
+</RadzenDataGrid>
+
+@code {
+    RadzenDataGrid<ExpenseCategory> _categoryGrid;
+
+    // List of the category row, cause it special
+    List<ExpenseCategory> _categories = new();
+
+    // UI row trackers
+    List<ExpenseCategory> CategoriesToInsert = new(); //Track inserting rows
+    List<ExpenseCategory> CategoriesToUpdate = new(); //Track edited rows
+
+    // Load all category rows from the database when the page first starts
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        _categories = await _dbContext.ExpenseCategories
+                                      .AsNoTracking()
+                                      .ToListAsync();
+    }
+
+    // Reset row copy pasta
+    void Reset(ExpenseCategory category)
+    {
+        CategoriesToInsert.Remove(category);
+        CategoriesToUpdate.Remove(category);
+    }
+
+    // Update row copy pasta
+    async Task OnUpdateRow(ExpenseCategory category)
+    {
+        _dbContext.Update(category);
+        await _dbContext.SaveChangesAsync();
+
+        var index = _categories.FindIndex(c => c.ExpenseCategoryId == category.ExpenseCategoryId);
+        if (index >= 0) _categories[index] = category;
+    }
+
+    // Create row copy paste
+    async Task OnCreateRow(ExpenseCategory category)
+    {
+        _dbContext.Add(category);
+        await _dbContext.SaveChangesAsync();
+
+        _categories = await _dbContext.ExpenseCategories
+                                      .AsNoTracking()
+                                      .ToListAsync();
+
+        CategoriesToInsert.Remove(category);
+    }
+
+    // Delete row copy pasta
+    async Task OnDeleteRow(ExpenseCategory category)
+    {
+        _dbContext.Remove(category);
+        await _dbContext.SaveChangesAsync();
+        _categories.RemoveAll(c => c.ExpenseCategoryId == category.ExpenseCategoryId);
+    }
+
+    // Insert row copy pasta
+    async Task InsertRow()
+    {
+        var cat = new ExpenseCategory();
+        CategoriesToInsert.Add(cat);
+        await _categoryGrid.InsertRow(cat);
+    }
+
+    // Edit row, but only allow existing categories to be edited
+    async Task EditRow(ExpenseCategory category)
+    {
+        CategoriesToUpdate.Add(category);
+        await _categoryGrid.EditRow(category);
+    }
+
+    // Delete row handler with validation and verification, blocks if it is being used
+    async Task DeleteRow(ExpenseCategory category)
+    {
+        try
+        {
+            // Clear any tracking flags for this row
+            Reset(category);
+
+            // Check if this category is used by any expenses
+            bool inUse = await _dbContext.Expenses
+                .AsNoTracking()
+                .AnyAsync(e => e.ExpenseCategoryId == category.ExpenseCategoryId);
+
+            if (inUse)
+            {
+                // Just cancel edit and warn the user
+                _categoryGrid.CancelEditRow(category);
+
+                NotificationService?.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Warning,
+                    Summary = "Delete blocked",
+                    Detail = "This category is used by existing expenses and cannot be deleted.",
+                    Duration = 4000
+                });
+
+                return;
+            }
+
+            // Delete time baby
+            var tracked = await _dbContext.ExpenseCategories.FindAsync(category.ExpenseCategoryId);
+            if (tracked != null)
+            {
+                _dbContext.Remove(tracked);
+            }
+            else
+            {
+                var stub = new ExpenseCategory { ExpenseCategoryId = category.ExpenseCategoryId };
+                _dbContext.Attach(stub);
+                _dbContext.Remove(stub);
+            }
+
+            await _dbContext.SaveChangesAsync();
+
+            // Remove from local list, refresh the grid, send sucess notification
+            _categories.RemoveAll(c => c.ExpenseCategoryId == category.ExpenseCategoryId);
+            await _categoryGrid.Reload();
+
+            NotificationService?.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Success,
+                Summary = "Deleted",
+                Detail = "Category deleted successfully.",
+                Duration = 2500
+            });
+        }
+
+        // You failed!
+        catch (Exception ex)
+        {
+            NotificationService?.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Delete failed",
+                Detail = ex.Message,
+                Duration = 4000
+            });
+        }
+    }
+
+    // Save method copy pasta
+    async Task SaveRow(ExpenseCategory category)
+    {
+        await _categoryGrid.UpdateRow(category);
+
+        // Simple success notification
+        NotificationService.Notify(new NotificationMessage
+        {
+            Severity = NotificationSeverity.Success,
+            Summary = "Saved",
+            Detail = "Category saved",
+            Duration = 2500
+        });
+    }
+
+    // Cancel edit copy pasta
+    void CancelEdit(ExpenseCategory category)
+    {
+        Reset(category);
+        _categoryGrid.CancelEditRow(category);
+
+        var entry = _dbContext.Entry(category);
+
+        if (entry.State == EntityState.Modified)
+        {
+            entry.CurrentValues.SetValues(entry.OriginalValues);
+            entry.State = EntityState.Unchanged;
+        }
+    }
+}

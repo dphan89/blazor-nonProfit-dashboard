@@ -1,0 +1,447 @@
+﻿@page "/donations"
+@using NonProfitDB.Models
+@using Microsoft.EntityFrameworkCore
+@inject NonProfitDBContext _dbContext
+@inject Radzen.NotificationService NotificationService
+@rendermode InteractiveServer
+
+<h3>Donations</h3>
+
+<style>
+    .rz-grid-table {
+        width: unset;
+    }
+</style>
+
+<RadzenDataGrid @ref="_donationGrid"
+                AllowAlternatingRows="false"
+                AllowFiltering="true"
+                AllowPaging="true"
+                PageSize="5"
+                AllowSorting="true"
+                EditMode="@DataGridEditMode.Single"
+                Data="@_donations"
+                TItem="Donation"
+                RowUpdate="@OnUpdateRow"
+                RowCreate="@OnCreateRow"
+                ColumnWidth="200px">
+
+    <HeaderTemplate>
+        <RadzenButton ButtonStyle="ButtonStyle.Success"
+                      Icon="add_circle"
+                      Text="Add New Donation"
+                      Click="@InsertRow"
+                      Disabled="@(DonationsToInsert.Count > 0)" />
+    </HeaderTemplate>
+
+    <Columns>
+        <!-- DONOR drop down menu column -->
+        <RadzenDataGridColumn Property="DonorId" Title="Donor" Width="260px">
+
+            <!-- Finds foreign key and name associated with DonorID and adds it to _donorOptions -->
+            <Template Context="donation">
+                @{
+                    var name = _donorOptions
+                    .FirstOrDefault(d => d.DonorId == donation.DonorId)
+                    ?.Name ?? "";
+                }
+
+                <!-- Write the name into the cell of RadzenUI -->
+                @name
+            </Template>
+
+            <!--- Show a dropdown so the user can select a donor -->
+            <EditTemplate Context="donation">
+
+                <!-- Radzen dropdown copy pasta and modified for this project, REMEMBER donations.DonorID is the foreign key and @_donorOptions is the class with ID int to NAME conversion-->
+                <RadzenDropDown @bind-Value="donation.DonorId"
+                                Data="@_donorOptions"
+                                TextProperty="Name"
+                                ValueProperty="DonorId"
+                                TValue="int"
+                                Style="width:240px; display:block"
+                                Name="DonorId"
+                                AllowClear="true"
+                                Placeholder="Select donor" />
+
+                <!-- Validation and verification -->
+                <RadzenRequiredValidator Text="Donor is required"
+                                         Component="DonorId"
+                                         Popup="true" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+
+        <!-- Category drop down menu -->
+        <RadzenDataGridColumn Property="DonationCategoryId" Title="Category" Width="220px">
+
+            <!-- Finds foreign key and name associated with donationsCategoryID and adds it to donations -->
+            <Template Context="donation">
+                @{
+                    var catName = _categories.FirstOrDefault(c => c.DonationCategoryId == donation.DonationCategoryId)?.CategoryName ?? "";
+                }
+                @catName
+            </Template>
+
+            <!-- Radzen dropdown copy pasta and modified for this project, REMEMBER donation.DonationCategoryId is the foreign key and @_categories is the list with all donation categories-->
+            <EditTemplate Context="donation">
+                <RadzenDropDown @bind-Value="donation.DonationCategoryId"
+                                Data="@_categories"
+                                TextProperty="CategoryName"
+                                ValueProperty="DonationCategoryId"
+                                Style="width:200px; display:block"
+                                Name="DonationCategoryId"
+                                AllowClear="true"
+                                Placeholder="Select category" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+
+        <!-- Donation date column -->
+        <RadzenDataGridColumn Property="DonationDate" Title="Donation Date" Width="200px">
+            <EditTemplate Context="donation">
+                <RadzenDatePicker @bind-Value="donation.DonationDate"
+                                  TValue="DateOnly"
+                                  Style="width:200px; display:block"
+                                  Name="DonationDate" />
+                <RadzenRequiredValidator Text="Donation date is required"
+                                         Component="DonationDate" Popup="true" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+
+        <!-- Entry date column -->
+        <RadzenDataGridColumn Property="EntryDate" Title="Entry Date" Width="200px">
+            <EditTemplate Context="donation">
+                <RadzenDatePicker @bind-Value="donation.EntryDate"
+                                  TValue="DateTime"
+                                  Style="width:200px; display:block"
+                                  Name="EntryDate" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+
+        <!-- Donation amount column -->
+        <RadzenDataGridColumn Property="Amount" Title="Amount" Width="160px">
+            <EditTemplate Context="donation">
+                <RadzenNumeric @bind-Value="donation.Amount"
+                               TValue="double"
+                               Style="width:140px; display:block"
+                               Name="Amount" />
+                <RadzenRequiredValidator Text="Amount is required"
+                                         Component="Amount" Popup="true" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+
+        <!-- Payment method column -->
+        <RadzenDataGridColumn Property="PaymentMethod" Title="Payment Method" Width="200px">
+            <Template Context="donation">
+                @donation.PaymentMethod
+            </Template>
+
+            <EditTemplate Context="donation">
+                <RadzenDropDown @bind-Value="donation.PaymentMethod"
+                                Data="@_paymentMethods"
+                                Style="width:200px; display:block"
+                                Name="PaymentMethod"
+                                Placeholder="Select method" />
+
+                <RadzenRequiredValidator Text="Payment Method is required"
+                                         Component="PaymentMethod"
+                                         Popup="true" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+
+        <!-- Reference number column -->
+        <RadzenDataGridColumn Property="ReferenceNumber" Title="Reference #" Width="200px">
+            <EditTemplate Context="donation">
+                <RadzenTextBox @bind-Value="donation.ReferenceNumber"
+                               Style="width:200px; display:block"
+                               Name="ReferenceNumber" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+
+        <!-- Notes column -->
+        <RadzenDataGridColumn Property="Notes" Title="Notes" Width="260px">
+            <EditTemplate Context="donation">
+                <RadzenTextBox @bind-Value="donation.Notes"
+                               Style="width:240px; display:block"
+                               Name="Notes" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+
+        <!-- Recorded-by column -->
+        <RadzenDataGridColumn Property="RecordedBy" Title="Recorded By" Width="200px">
+            <EditTemplate Context="donation">
+                <RadzenTextBox @bind-Value="donation.RecordedBy"
+                               Style="width:200px; display:block"
+                               Name="RecordedBy" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+
+        <!-- Action buttons column -->
+        <RadzenDataGridColumn Filterable="false"
+                              Sortable="false"
+                              TextAlign="TextAlign.Right"
+                              Width="120px">
+            <Template Context="donation">
+                <RadzenButton Icon="edit"
+                              ButtonStyle="ButtonStyle.Light"
+                              Size="ButtonSize.Small"
+                              Click="@(() => EditRow(donation))"
+                              @onclick:stopPropagation="true" />
+
+                <RadzenButton Icon="delete"
+                              ButtonStyle="ButtonStyle.Danger"
+                              Size="ButtonSize.Small"
+                              class="rz-ms-1"
+                              Click="@(() => DeleteRow(donation))"
+                              @onclick:stopPropagation="true" />
+            </Template>
+
+            <EditTemplate Context="donation">
+                <RadzenButton Icon="check"
+                              ButtonStyle="ButtonStyle.Success"
+                              Size="ButtonSize.Small"
+                              Click="@(() => SaveRow(donation))" />
+
+                <RadzenButton Icon="close"
+                              ButtonStyle="ButtonStyle.Light"
+                              Size="ButtonSize.Small"
+                              class="rz-ms-1"
+                              Click="@(() => CancelEdit(donation))" />
+
+                <RadzenButton Icon="delete"
+                              ButtonStyle="ButtonStyle.Danger"
+                              Size="ButtonSize.Small"
+                              class="rz-ms-1"
+                              Click="@(() => DeleteRow(donation))" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+    </Columns>
+</RadzenDataGrid>
+
+@code {
+    // Main donations grid reference and in-memory lists
+    RadzenDataGrid<Donation> _donationGrid;
+    List<Donation> _donations = new();
+    List<DonationCategory> _categories = new();
+
+    // Donor lists for dropdown binding
+    List<Donor> _donorsList = new(); // The full donor list
+    List<DonorOption> _donorOptions = new(); // Drop down options
+
+    // Track rows currently being inserted or updated
+    List<Donation> DonationsToInsert = new();
+    List<Donation> DonationsToUpdate = new();
+
+    // Fixed list of allowed payment methods
+    List<string> _paymentMethods = new()
+    {
+        "Cash",
+        "Check",
+        "Credit",
+        "Other"
+    };
+
+    // Load initial data for donations, categories, and donors
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+
+        _categories = await _dbContext.DonationCategories
+                                      .AsNoTracking()
+                                      .ToListAsync();
+
+        _donations = await _dbContext.Donations
+                                     .AsNoTracking()
+                                     .ToListAsync();
+
+        // Load donors and project for dropdown 
+        _donorsList = await _dbContext.Donors
+                                      .AsNoTracking()
+                                      .ToListAsync();
+
+        _donorOptions = _donorsList
+                        .Select(d => new DonorOption { DonorId = d.DonorId, Name = $"{d.FirstName} {d.LastName}".Trim() })
+                        .ToList();
+    }
+
+    // Clear tracking lists for a specific donation row
+    void Reset(Donation donation)
+    {
+        DonationsToInsert.Remove(donation);
+        DonationsToUpdate.Remove(donation);
+    }
+
+    // Handle updates to existing donation rows
+    async Task OnUpdateRow(Donation donation)
+    {
+        //Verication and validation for various user errors, figure it out from the if statements, dummy
+        if (donation.DonorId <= 0)
+        {
+            NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Error, Summary = "Save failed", Detail = "Donor is required.", Duration = 4000 });
+            return;
+        }
+        if (donation.Amount <= 0)
+        {
+            NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Error, Summary = "Save failed", Detail = "Amount must be greater than zero.", Duration = 4000 });
+            return;
+        }
+
+        //Try to save the changes and send a notification
+        try
+        {
+            _dbContext.Update(donation);
+            await _dbContext.SaveChangesAsync();
+
+            var index = _donations.FindIndex(d => d.DonationId == donation.DonationId);
+            if (index >= 0) _donations[index] = donation;
+
+            NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Success, Summary = "Saved", Detail = "Donation updated", Duration = 2500 });
+        }
+        
+        //You failed message
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Error, Summary = "Save failed", Detail = ex.ToString(), Duration = 8000 });
+            Console.Error.WriteLine(ex.ToString());
+        }
+    }
+
+    // Handle creation of new donation rows
+    async Task OnCreateRow(Donation donation)
+    {
+       //Verication and validation for various user errors, figure it out from the if statements, dummy
+        if (donation.DonorId <= 0)
+        {
+            NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Error, Summary = "Create failed", Detail = "Donor is required.", Duration = 4000 });
+            return;
+        }
+        if (donation.Amount <= 0)
+        {
+            NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Error, Summary = "Create failed", Detail = "Amount must be greater than zero.", Duration = 4000 });
+            return;
+        }
+        if (donation.DonationDate == default)
+        {
+            NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Error, Summary = "Create failed", Detail = "Donation date is required.", Duration = 4000 });
+            return;
+        }
+
+        if (donation.EntryDate == default)
+            donation.EntryDate = DateTime.Now;
+
+        //Try to save the changes and send a notification
+        try
+        {
+            _dbContext.Add(donation);
+            await _dbContext.SaveChangesAsync();
+
+            // Refresh to pick up DB-assigned keys
+            _donations = await _dbContext.Donations.AsNoTracking().ToListAsync();
+            DonationsToInsert.Remove(donation);
+            await _donationGrid.Reload();
+
+            NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Success, Summary = "Created", Detail = "Donation created successfully", Duration = 2500 });
+        }
+
+        //You failed message
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Error, Summary = "Create failed", Detail = ex.ToString(), Duration = 8000 });
+            Console.Error.WriteLine(ex.ToString());
+        }
+    }
+
+    // Insert button logic
+    async Task InsertRow()
+    {
+        var donation = new Donation
+        {
+            DonationDate = DateOnly.FromDateTime(DateTime.Today),
+            EntryDate = DateTime.Now
+        };
+
+        DonationsToInsert.Add(donation);
+        _donations.Insert(0, donation);
+        await _donationGrid.InsertRow(donation);
+    }
+
+    // Edit button logic
+    async Task EditRow(Donation donation)
+    {
+        DonationsToUpdate.Add(donation);
+        await _donationGrid.EditRow(donation);
+    }
+
+    // Delete button logic
+    async Task DeleteRow(Donation donation)
+    {
+        // Clear tracking lists
+        Reset(donation);
+
+        // If this is a new/unsaved donation, allow cancel/removal
+        if (donation.DonationId == 0)
+        {
+            _donations.Remove(donation);
+            DonationsToInsert.Remove(donation);
+
+            _donationGrid.CancelEditRow(donation);
+            await _donationGrid.Reload();
+
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Info,
+                Summary = "Cancel successful",
+                Detail = "Unsaved donation entry was removed.",
+                Duration = 3000
+            });
+
+            return;
+        }
+
+        // Blocks deletion of existing donations
+        NotificationService.Notify(new NotificationMessage
+        {
+            Severity = NotificationSeverity.Warning,
+            Summary = "Delete disabled",
+            Detail = "Donation history must be kept for ethical reasons. Please modify or use the description box instead.",
+            Duration = 4000
+        });
+    }
+
+    // Save button logic
+    async Task SaveRow(Donation donation)
+    {
+        await _donationGrid.UpdateRow(donation);
+
+        // Simple success notification
+        NotificationService.Notify(new NotificationMessage
+        {
+            Severity = NotificationSeverity.Success,
+            Summary = "Saved",
+            Detail = "Donation saved successfully",
+            Duration = 2500
+        });
+    }
+
+    // Cancel edit button logic
+    void CancelEdit(Donation donation)
+    {
+        Reset(donation);
+
+        _donationGrid.CancelEditRow(donation);
+
+        var entry = _dbContext.Entry(donation);
+
+        if (entry.State == EntityState.Modified)
+        {
+            entry.CurrentValues.SetValues(entry.OriginalValues);
+            entry.State = EntityState.Unchanged;
+        }
+    }
+
+    // Mini helper class for donor dropdown options
+    class DonorOption
+    {
+        public int DonorId { get; set; }
+        public string Name { get; set; }
+    }
+}

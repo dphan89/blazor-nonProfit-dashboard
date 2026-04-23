@@ -1,0 +1,491 @@
+﻿@page "/expenses"
+@using NonProfitDB.Models
+@using Microsoft.EntityFrameworkCore
+@inject NonProfitDBContext _dbContext
+@inject Radzen.NotificationService NotificationService
+@rendermode InteractiveServer
+
+<h3>Expenses</h3>
+
+<style>
+    .rz-grid-table {
+        width: 100%;
+        table-layout: auto;
+    }
+</style>
+
+<!-- EXPENSES Data Grid -->
+<RadzenDataGrid @ref="_expenseGrid"
+                AllowAlternatingRows="false"
+                AllowFiltering="true"
+                AllowPaging="true"
+                PageSize="8"
+                AllowSorting="true"
+                EditMode="@DataGridEditMode.Single"
+                Data="@_expenses"
+                TItem="Expense"
+                RowUpdate="@OnUpdateRow"
+                RowCreate="@OnCreateRow"
+                ColumnWidth="180px"
+                Style="width:100%">
+
+    <!-- Add New Expense button -->
+    <HeaderTemplate>
+        <RadzenButton ButtonStyle="ButtonStyle.Success"
+                      Icon="add_circle"
+                      Text="Add New Expense"
+                      Click="@InsertRow"
+                      Disabled="@(ExpensesToInsert.Count > 0)" />
+    </HeaderTemplate>
+
+    <!-- GRID COLUMNS -->
+    <Columns>
+
+        <!-- CATEGORY drop down menu column -->
+        <RadzenDataGridColumn Property="ExpenseCategoryId" Title="Category" Width="260px">
+            <!-- Find FK -> show friendly name -->
+            <Template Context="expense">
+                @{
+                    var name = _categories.FirstOrDefault(c => c.ExpenseCategoryId == expense.ExpenseCategoryId)?.CategoryName ?? "";
+                }
+                @name
+            </Template>
+
+            <!-- Show a dropdown so the user can select a category -->
+            <EditTemplate Context="expense">
+                <!-- Radzen dropdown copy pasta and modified for this project, REMEMBER expense.ExpenseCategoryId is the FK and @_categories is the list with ID->Name -->
+                <RadzenDropDown @bind-Value="expense.ExpenseCategoryId"
+                                Data="@_categories"
+                                TextProperty="CategoryName"
+                                ValueProperty="ExpenseCategoryId"
+                                TValue="int"
+                                Style="width:240px; display:block"
+                                Name="ExpenseCategoryId"
+                                AllowClear="true"
+                                Placeholder="Select category" />
+                <!-- Validation and verification -->
+                <RadzenRequiredValidator Text="Category is required" Component="ExpenseCategoryId" Popup="true" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+
+        <!-- EXPENSE DATE column -->
+        <RadzenDataGridColumn Property="ExpenseDate" Title="Expense Date" Width="180px">
+            <Template Context="expense">@expense.ExpenseDate</Template>
+            <EditTemplate Context="expense">
+                <RadzenDatePicker @bind-Value="expense.ExpenseDate"
+                                  TValue="DateOnly"
+                                  Style="width:160px; display:block"
+                                  Name="ExpenseDate" />
+                <RadzenRequiredValidator Text="Expense date is required" Component="ExpenseDate" Popup="true" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+
+        <!-- ENTRY DATE column -->
+        <RadzenDataGridColumn Property="EntryDate" Title="Entry Date" Width="180px">
+            <Template Context="expense">@expense.EntryDate</Template>
+            <EditTemplate Context="expense">
+                <RadzenDatePicker @bind-Value="expense.EntryDate"
+                                  TValue="DateTime"
+                                  Style="width:160px; display:block"
+                                  Name="EntryDate" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+
+        <!-- AMOUNT column -->
+        <RadzenDataGridColumn Property="Amount" Title="Amount" Width="140px">
+            <Template Context="expense">@string.Format("{0:C}", expense.Amount)</Template>
+            <EditTemplate Context="expense">
+                <RadzenNumeric @bind-Value="expense.Amount"
+                               TValue="double"
+                               Style="width:120px; display:block"
+                               Name="Amount" />
+                <RadzenRequiredValidator Text="Amount is required" Component="Amount" Popup="true" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+
+        <!-- PAYEE column -->
+        <RadzenDataGridColumn Property="Payee" Title="Payee" Width="220px">
+            <Template Context="expense">@expense.Payee</Template>
+            <EditTemplate Context="expense">
+                <RadzenTextBox @bind-Value="expense.Payee"
+                               Style="width:200px; display:block"
+                               Name="Payee" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+
+        <!-- PAYMENT METHOD column (new) -->
+        <RadzenDataGridColumn Property="PaymentMethod" Title="Payment Method" Width="200px">
+            <Template Context="expense">@expense.PaymentMethod</Template>
+            <EditTemplate Context="expense">
+                <RadzenDropDown @bind-Value="expense.PaymentMethod"
+                                Data="@_paymentMethods"
+                                Style="width:180px; display:block"
+                                Name="PaymentMethod"
+                                AllowClear="true"
+                                Placeholder="Select method" />
+                <RadzenRequiredValidator Text="Payment Method is required" Component="PaymentMethod" Popup="true" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+
+        <!-- REFERENCE NUMBER column -->
+        <RadzenDataGridColumn Property="ReferenceNumber" Title="Reference #" Width="180px">
+            <Template Context="expense">@expense.ReferenceNumber</Template>
+            <EditTemplate Context="expense">
+                <RadzenTextBox @bind-Value="expense.ReferenceNumber"
+                               Style="width:160px; display:block"
+                               Name="ReferenceNumber" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+
+        <!-- RECORDED BY column -->
+        <RadzenDataGridColumn Property="RecordedBy" Title="Recorded By" Width="180px">
+            <Template Context="expense">@expense.RecordedBy</Template>
+            <EditTemplate Context="expense">
+                <RadzenTextBox @bind-Value="expense.RecordedBy"
+                               Style="width:160px; display:block"
+                               Name="RecordedBy" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+
+        <!-- NOTES column -->
+        <RadzenDataGridColumn Property="Notes" Title="Notes" Width="300px">
+            <Template Context="expense">@expense.Notes</Template>
+            <EditTemplate Context="expense">
+                <RadzenTextBox @bind-Value="expense.Notes"
+                               Style="width:280px; display:block"
+                               Name="Notes" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+
+        <!-- ACTIONS column (Edit / Delete) -->
+        <RadzenDataGridColumn Filterable="false"
+                              Sortable="false"
+                              TextAlign="TextAlign.Right"
+                              Width="140px">
+            <Template Context="expense">
+                <RadzenButton Icon="edit"
+                              ButtonStyle="ButtonStyle.Light"
+                              Size="ButtonSize.Small"
+                              Click="@(() => EditRow(expense))"
+                              @onclick:stopPropagation="true" />
+                <RadzenButton Icon="delete"
+                              ButtonStyle="ButtonStyle.Danger"
+                              Size="ButtonSize.Small"
+                              class="rz-ms-1"
+                              Click="@(async () => await DeleteRow(expense))"
+                              @onclick:stopPropagation="true" />
+            </Template>
+
+            <EditTemplate Context="expense">
+                <RadzenButton Icon="check"
+                              ButtonStyle="ButtonStyle.Success"
+                              Size="ButtonSize.Small"
+                              Click="@(() => SaveRow(expense))" />
+                <RadzenButton Icon="close"
+                              ButtonStyle="ButtonStyle.Light"
+                              Size="ButtonSize.Small"
+                              class="rz-ms-1"
+                              Click="@(() => CancelEdit(expense))" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+    </Columns>
+</RadzenDataGrid>
+
+@code {
+    // Main expenses grid reference and in-memory lists
+    RadzenDataGrid<Expense> _expenseGrid;
+    List<Expense> _expenses = new();
+    List<ExpenseCategory> _categories = new();
+
+    // UI trackers for rows being inserted/updated
+    List<Expense> ExpensesToInsert = new();
+    List<Expense> ExpensesToUpdate = new();
+
+    // Fixed list of allowed payment methods
+    List<string> _paymentMethods = new()
+    {
+        "Cash",
+        "Check",
+        "Credit",
+        "Other"
+    };
+
+    // Load categories and expenses when component initializes
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+
+        _categories = await _dbContext.ExpenseCategories
+                                     .AsNoTracking()
+                                     .ToListAsync();
+
+        _expenses = await _dbContext.Expenses
+                                   .AsNoTracking()
+                                   .ToListAsync();
+    }
+
+    // Clear tracking lists for a specific expense row
+    void Reset(Expense expense)
+    {
+        ExpensesToInsert.Remove(expense);
+        ExpensesToUpdate.Remove(expense);
+    }
+
+    // Handle updates to existing expense rows
+    async Task OnUpdateRow(Expense expense)
+    {
+        // basic validation
+        if (expense.ExpenseCategoryId <= 0)
+        {
+            NotifyError("Save failed", "Category is required.");
+            return;
+        }
+
+        if (expense.Amount <= 0)
+        {
+            NotifyError("Save failed", "Amount must be greater than zero.");
+            return;
+        }
+
+        try
+        {
+            _dbContext.Update(expense);
+            await _dbContext.SaveChangesAsync();
+
+            var index = _expenses.FindIndex(e => e.ExpenseId == expense.ExpenseId);
+            if (index >= 0) _expenses[index] = expense;
+
+            NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Success, Summary = "Saved", Detail = "Expense updated", Duration = 2500 });
+        }
+        catch (Exception ex)
+        {
+            // Show error and revert UI to DB state
+            NotifyError("Save failed", ex.ToString());
+            Console.Error.WriteLine(ex);
+
+            // Reload collection from DB to ensure UI reflects real data
+            _expenses = await _dbContext.Expenses.AsNoTracking().ToListAsync();
+            await _expenseGrid.Reload();
+        }
+    }
+
+    // Persist new expense record to the database
+    async Task OnCreateRow(Expense expense)
+    {
+        // basic pre-save checks
+        if (expense.ExpenseCategoryId <= 0)
+        {
+            NotifyError("Create failed", "Category is required.");
+            return;
+        }
+        if (expense.Amount <= 0)
+        {
+            NotifyError("Create failed", "Amount must be greater than zero.");
+            return;
+        }
+        if (expense.ExpenseDate == default)
+        {
+            NotifyError("Create failed", "Expense date is required.");
+            return;
+        }
+
+        if (expense.EntryDate == default)
+            expense.EntryDate = DateTime.Now;
+
+        try
+        {
+            _dbContext.Add(expense);
+            await _dbContext.SaveChangesAsync();
+
+            // refresh to pick up DB-assigned keys
+            _expenses = await _dbContext.Expenses.AsNoTracking().ToListAsync();
+            ExpensesToInsert.Remove(expense);
+            await _expenseGrid.Reload();
+
+            NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Success, Summary = "Created", Detail = "Expense created successfully", Duration = 2500 });
+        }
+        catch (Exception ex)
+        {
+            // Show error and revert UI to DB state (discard unsaved row)
+            NotifyError("Create failed", ex.ToString());
+            Console.Error.WriteLine(ex);
+
+            // Refresh list to reflect DB and remove the unsaved item
+            _expenses = await _dbContext.Expenses.AsNoTracking().ToListAsync();
+            ExpensesToInsert.Remove(expense);
+            await _expenseGrid.Reload();
+        }
+    }
+
+    // Insert row handler
+    async Task InsertRow()
+    {
+        var expense = new Expense
+        {
+            ExpenseDate = DateOnly.FromDateTime(DateTime.Today),
+            EntryDate = DateTime.Now
+        };
+
+        ExpensesToInsert.Add(expense);
+        _expenses.Insert(0, expense);
+        await _expenseGrid.InsertRow(expense);
+    }
+
+    // Edit row handler
+    async Task EditRow(Expense expense)
+    {
+        ExpensesToUpdate.Add(expense);
+        await _expenseGrid.EditRow(expense);
+    }
+
+    // Delete row handler
+    async Task DeleteRow(Expense expense)
+    {
+        try
+        {
+            // Clear tracking lists
+            Reset(expense);
+
+            // If this is a new/unsaved expense, allow cancel/removal
+            if (expense.ExpenseId == 0)
+            {
+                _expenses.Remove(expense);
+                ExpensesToInsert.Remove(expense);
+
+                _expenseGrid.CancelEditRow(expense);
+                await _expenseGrid.Reload();
+
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Info,
+                    Summary = "Cancel successful",
+                    Detail = "Unsaved expense entry was removed.",
+                    Duration = 3000
+                });
+
+                return;
+            }
+
+            // Proceed with EF-safe delete
+            var tracked = await _dbContext.Expenses.FindAsync(expense.ExpenseId);
+            if (tracked != null)
+                _dbContext.Remove(tracked);
+            else
+            {
+                var stub = new Expense { ExpenseId = expense.ExpenseId };
+                _dbContext.Attach(stub);
+                _dbContext.Remove(stub);
+            }
+
+            await _dbContext.SaveChangesAsync();
+
+            _expenses.RemoveAll(e => e.ExpenseId == expense.ExpenseId);
+            await _expenseGrid.Reload();
+
+            NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Success, Summary = "Deleted", Detail = "Expense deleted", Duration = 2500 });
+        }
+        catch (Exception ex)
+        {
+            NotifyError("Delete failed", ex.Message);
+            Console.Error.WriteLine(ex);
+        }
+    }
+
+    // Checks if we are still saving
+    bool _isSaving;
+
+    // Save button logic
+    async Task SaveRow(Expense expense)
+    {
+        if (_isSaving) return;
+        _isSaving = true;
+
+        var isNew = expense.ExpenseId == 0;
+
+        // Client-side validation — keep the row editable if validation fails
+        if (expense.ExpenseCategoryId <= 0)
+        {
+            NotifyError("Save failed", "Category is required.");
+            _isSaving = false;
+            return;
+        }
+
+        if (expense.Amount <= 0)
+        {
+            NotifyError("Save failed", "Amount must be greater than zero.");
+            _isSaving = false;
+            return;
+        }
+
+        if (isNew && expense.ExpenseDate == default)
+        {
+            NotifyError("Save failed", "Expense date is required.");
+            _isSaving = false;
+            return;
+        }
+
+        if (isNew && expense.EntryDate == default)
+            expense.EntryDate = DateTime.Now;
+
+        try
+        {
+            if (isNew)
+                _dbContext.Add(expense);
+            else
+                _dbContext.Update(expense);
+
+            await _dbContext.SaveChangesAsync();
+
+            // Refresh local cache so UI matches DB (includes DB-assigned keys)
+            _expenses = await _dbContext.Expenses.AsNoTracking().ToListAsync();
+
+            if (isNew) ExpensesToInsert.Remove(expense);
+
+            await _expenseGrid.Reload();
+
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Success,
+                Summary = "Saved",
+                Detail = isNew ? "Expense created successfully" : "Expense saved successfully",
+                Duration = 2500
+            });
+        }
+        catch (Exception ex)
+        {
+            // Show full error and restore UI from DB so it doesn't show a "successful" edit
+            NotifyError(isNew ? "Create failed" : "Save failed", ex.ToString());
+            Console.Error.WriteLine(ex);
+
+            _expenses = await _dbContext.Expenses.AsNoTracking().ToListAsync();
+            if (isNew) ExpensesToInsert.Remove(expense);
+            await _expenseGrid.Reload();
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    // Cancel edit button logic
+    void CancelEdit(Expense expense)
+    {
+        Reset(expense);
+
+        _expenseGrid.CancelEditRow(expense);
+
+        var entry = _dbContext.Entry(expense);
+
+        if (entry.State == EntityState.Modified)
+        {
+            entry.CurrentValues.SetValues(entry.OriginalValues);
+            entry.State = EntityState.Unchanged;
+        }
+    }
+
+    // Helper for error notifications
+    void NotifyError(string summary, string detail)
+    {
+        NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Error, Summary = summary, Detail = detail, Duration = 6000 });
+    }
+}

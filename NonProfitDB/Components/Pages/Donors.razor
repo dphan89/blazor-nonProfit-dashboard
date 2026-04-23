@@ -1,0 +1,356 @@
+﻿@page "/donors"
+@using NonProfitDB.Models
+@using Microsoft.EntityFrameworkCore
+@inject NonProfitDBContext _dbContext
+@inject Radzen.NotificationService NotificationService
+@rendermode InteractiveServer
+
+<h3>Donors</h3>
+
+<style>
+    .page-container {
+        padding: 20px;
+    }
+
+    .rz-grid-table {
+        width: 100%;
+        table-layout: auto;
+    }
+</style>
+
+<RadzenDataGrid @ref="_donorGrid"
+                AllowAlternatingRows="false"
+                AllowFiltering="true"
+                AllowPaging="true"
+                PageSize="5"
+                AllowSorting="true"
+                EditMode="@DataGridEditMode.Single"
+                Data="@_donors"
+                TItem="Donor"
+                RowUpdate="@OnUpdateRow"
+                RowCreate="@OnCreateRow"
+                ColumnWidth="200px">
+
+    <HeaderTemplate>
+        <RadzenButton ButtonStyle="ButtonStyle.Success"
+                      Icon="add_circle"
+                      Text="Add New Donor"
+                      Click="@InsertRow"
+                      Disabled="@(DonorToInsert.Count > 0)" />
+    </HeaderTemplate>
+
+    <Columns>
+
+        <!-- Column: Donor ID -->
+        <RadzenDataGridColumn TItem="Donor" Property="DonorId" Title="ID" Width="80px" Frozen="true" />
+
+        <!-- Column: Donor first name -->
+        <RadzenDataGridColumn TItem="Donor" Property="FirstName" Title="First Name" Width="220px">
+            <Template Context="donor">@donor.FirstName</Template>
+            <EditTemplate Context="donor">
+                <RadzenTextBox @bind-Value="donor.FirstName" Name="FirstName" Style="width:200px; display:block" />
+                <RadzenRequiredValidator Component="FirstName" Text="First name is required" Popup="true" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+
+        <!-- Column: Donor last name -->
+        <RadzenDataGridColumn TItem="Donor" Property="LastName" Title="Last Name" Width="220px">
+            <Template Context="donor">@donor.LastName</Template>
+            <EditTemplate Context="donor">
+                <RadzenTextBox @bind-Value="donor.LastName" Name="LastName" Style="width:200px; display:block" />
+                <RadzenRequiredValidator Component="LastName" Text="Last name is required" Popup="true" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+
+        <!-- Column: donor phone number with mask -->
+        <RadzenDataGridColumn TItem="Donor" Property="Phone" Title="Phone" Width="160px">
+            <Template Context="donor">@donor.Phone</Template>
+            <EditTemplate Context="donor">
+                <RadzenMask @bind-Value="donor.Phone"
+                            Mask="(***) ***-****"
+                            CharacterPattern="[0-9]"
+                            Placeholder="(000) 000-0000"
+                            Name="Phone"
+                            Style="width:140px; display:block" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+
+        <!-- Column: donor email with validation -->
+        <RadzenDataGridColumn TItem="Donor" Property="Email" Title="Email" Width="260px">
+            <Template Context="donor">@donor.Email</Template>
+            <EditTemplate Context="donor">
+                <RadzenTextBox @bind-Value="donor.Email" Name="Email" Style="width:220px; display:block" />
+                <RadzenRequiredValidator Component="Email" Text="Email is required" Popup="true" />
+                <RadzenEmailValidator Component="Email" Text="Enter a valid email" Popup="true" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+
+        <!-- Column: street address -->
+        <RadzenDataGridColumn TItem="Donor" Property="Address" Title="Address" Width="300px">
+            <Template Context="donor">@donor.Address</Template>
+            <EditTemplate Context="donor">
+                <RadzenTextBox @bind-Value="donor.Address" Name="Address" Style="width:260px; display:block" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+
+        <!-- Column: city -->
+        <RadzenDataGridColumn TItem="Donor" Property="City" Title="City" Width="180px">
+            <Template Context="donor">@donor.City</Template>
+            <EditTemplate Context="donor">
+                <RadzenTextBox @bind-Value="donor.City" Name="City" Style="width:160px; display:block" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+
+        <!-- Column: state -->
+        <RadzenDataGridColumn TItem="Donor" Property="State" Title="State" Width="100px">
+            <Template Context="donor">@donor.State</Template>
+            <EditTemplate Context="donor">
+                <RadzenTextBox @bind-Value="donor.State"
+                               Name="State"
+                               Style="width:60px; display:block" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+
+        <!-- Column: zip code with mask -->
+        <RadzenDataGridColumn TItem="Donor" Property="ZipCode" Title="Zip" Width="110px">
+            <Template Context="donor">@donor.ZipCode</Template>
+            <EditTemplate Context="donor">
+                <RadzenMask @bind-Value="donor.ZipCode"
+                            Mask="*****"
+                            CharacterPattern="[0-9]"
+                            Placeholder="00000"
+                            Name="ZipCode"
+                            Style="width:100px; display:block" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+
+        <!-- Column: date created -->
+        <RadzenDataGridColumn TItem="Donor" Property="CreatedDate" Title="Created" Width="180px">
+            <Template Context="donor">@donor.CreatedDate?.ToString("g")</Template>
+            <EditTemplate Context="donor">
+                <RadzenDatePicker @bind-Value="donor.CreatedDate"
+                                  Name="CreatedDate"
+                                  Style="width:160px; display:block" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+
+        <!-- Column: action buttons  -->
+        <RadzenDataGridColumn TItem="Donor" Filterable="false" Sortable="false" TextAlign="TextAlign.Right" Width="120px">
+            <Template Context="donor">
+                <RadzenButton Icon="edit" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                              Click="@(() => EditRow(donor))" @onclick:stopPropagation="true" />
+                <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small"
+                              class="rz-ms-1" Click="@(async () => await DeleteRow(donor))"
+                              @onclick:stopPropagation="true" />
+            </Template>
+
+            <EditTemplate Context="donor">
+                <RadzenButton Icon="save" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Small"
+                              Click="@(() => SaveRow(donor))" />
+                <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                              class="rz-ms-1" Click="@(() => CancelEdit(donor))" />
+            </EditTemplate>
+        </RadzenDataGridColumn>
+    </Columns>
+</RadzenDataGrid>
+
+@code {
+    RadzenDataGrid<Donor> _donorGrid;
+    List<Donor> _donors = new();
+
+    // Tracks edits and inserts
+    List<Donor> DonorToInsert = new();
+    List<Donor> DonorToUpdate = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        _donors = await _dbContext.Donors
+                                  .AsNoTracking()
+                                  .ToListAsync();
+    }
+
+    //Copy pasta method from Radzen docs
+    void Reset(Donor donor)
+    {
+        DonorToInsert.Remove(donor);
+        DonorToUpdate.Remove(donor);
+    }
+
+    //Copy pasta method from Radzen docs, with validation added
+    async Task OnUpdateRow(Donor donor)
+    {
+        if (string.IsNullOrWhiteSpace(donor.FirstName) || string.IsNullOrWhiteSpace(donor.LastName))
+        {
+            NotifyError("Validation", "First and last name are required.");
+            return;
+        }
+
+        try
+        {
+            _dbContext.Update(donor);
+            await _dbContext.SaveChangesAsync();
+
+            var idx = _donors.FindIndex(d => d.DonorId == donor.DonorId);
+            if (idx >= 0) _donors[idx] = donor;
+
+            NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Success, Summary = "Saved", Detail = "Donor saved", Duration = 2000 });
+        }
+        catch (Exception ex)
+        {
+            NotifyError("Save failed", ex.Message);
+            Console.Error.WriteLine(ex);
+        }
+    }
+
+
+    //Copy pasta method from Radzen docs, with validation added
+    async Task OnCreateRow(Donor donor)
+    {
+        if (string.IsNullOrWhiteSpace(donor.FirstName) || string.IsNullOrWhiteSpace(donor.LastName))
+        {
+            NotifyError("Validation", "First and last name are required.");
+            return;
+        }
+
+        try
+        {
+            _dbContext.Add(donor);
+            await _dbContext.SaveChangesAsync();
+
+            _donors = await _dbContext.Donors.AsNoTracking().ToListAsync();
+            DonorToInsert.Remove(donor);
+            await _donorGrid.Reload();
+
+            NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Success, Summary = "Created", Detail = "Donor created", Duration = 2000 });
+        }
+        catch (Exception ex)
+        {
+            NotifyError("Create failed", ex.ToString());
+            Console.Error.WriteLine(ex);
+        }
+    }
+
+
+    //Copy pasta method from Radzen docs
+    async Task InsertRow()
+    {
+        var donor = new Donor();
+        DonorToInsert.Add(donor);
+
+        // add to local list so grid can open it for edit
+        _donors.Insert(0, donor);
+        await _donorGrid.InsertRow(donor);
+        await _donorGrid.Reload();
+    }
+
+
+    //Copy pasta method from Radzen docs
+    async Task EditRow(Donor donor)
+    {
+        DonorToUpdate.Add(donor);
+        await _donorGrid.EditRow(donor);
+    }
+
+
+    //Copy pasta method from Radzen docs, with validation added
+
+    async Task DeleteRow(Donor donor)
+    {
+        try
+        {
+            // Clear tracking flags (insert/update lists)
+            Reset(donor);
+
+            // 1) Brand-new donor (never saved) → just discard the row
+            if (donor.DonorId == 0)
+            {
+                _donors.Remove(donor);
+                _donorGrid.CancelEditRow(donor);
+                await _donorGrid.Reload();
+
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Info,
+                    Summary = "Row removed",
+                    Detail = "Unsaved donor entry was discarded.",
+                    Duration = 3000
+                });
+
+                return;
+            }
+
+            // Check if donor has any donations
+            var hasDonations = await _dbContext.Donations
+                .AsNoTracking()
+                .AnyAsync(d => d.DonorId == donor.DonorId);
+
+            if (hasDonations)
+            {
+                // Donor is in use, block user from deleting
+                _donorGrid.CancelEditRow(donor);
+
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Warning,
+                    Summary = "Delete blocked",
+                    Detail = "This donor has donation history and cannot be deleted. Please keep the record for auditing and ethical reasons.",
+                    Duration = 5000
+                });
+
+                return;
+            }
+
+            // Safe to delete
+            var tracked = await _dbContext.Donors.FindAsync(donor.DonorId);
+            if (tracked != null)
+            {
+                _dbContext.Remove(tracked);
+            }
+            else
+            {
+                var stub = new Donor { DonorId = donor.DonorId };
+                _dbContext.Attach(stub);
+                _dbContext.Remove(stub);
+            }
+
+            await _dbContext.SaveChangesAsync();
+
+            _donors.RemoveAll(d => d.DonorId == donor.DonorId);
+            await _donorGrid.Reload();
+
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Success,
+                Summary = "Deleted",
+                Detail = "Donor deleted (no donations were linked).",
+                Duration = 2500
+            });
+        }
+        catch (Exception ex)
+        {
+            NotifyError("Delete failed", ex.Message);
+            Console.Error.WriteLine(ex);
+        }
+    }
+
+
+    //Copy pasta method from Radzen docs
+    void SaveRow(Donor donor)
+    {
+        _donorGrid.UpdateRow(donor);
+    }
+
+    //Copy pasta method from Radzen docs
+    void CancelEdit(Donor donor)
+    {
+        Reset(donor);
+        _donorGrid.CancelEditRow(donor);
+    }
+
+    // Debug notifcation for some severe errors that I got stuck on
+    void NotifyError(string summary, string detail)
+    {
+        NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Error, Summary = summary, Detail = detail, Duration = 5000 });
+    }
+}
