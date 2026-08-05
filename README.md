@@ -1,5 +1,5 @@
 # NonProfitDB
-Nonprofit Finance Dashboard — GitHub
+Nonprofit Finance Dashboard — Student Project
 
 Built a functional Blazor dashboard prototype using C#, HTML, CSS, and SQL, with working navigation and core nonprofit finance features.
 <img width="1886" height="452" alt="donations" src="https://github.com/user-attachments/assets/9794b905-4ab7-4378-960d-8d76c17598e5" />
